@@ -5,6 +5,9 @@
 static
 VOID __fastcall ContextSwitch(PUTHREAD CurrentThread, PUTHREAD NextThread);
 
+static
+VOID __fastcall InternalExit(PUTHREAD Thread, PUTHREAD NextThread);
+
 PUTHREAD RunningThread;
 PUTHREAD MainThread;
 
@@ -25,6 +28,7 @@ static VOID Schedule() {
 
 static VOID InternalStart() {
 	RunningThread->Function(RunningThread->Arg);
+	UtExit();
 }
 
 VOID UtInit() {
@@ -50,6 +54,11 @@ VOID UtYield() {
 		InsertTailList(&ReadyQueue, &RunningThread->Link);
 		Schedule();
 	}
+}
+
+VOID UtExit() {
+	RunningThreads -= 1;
+	InternalExit(RunningThread, ExtractNextReadyThread());
 }
 
 VOID UtActivate(HANDLE thread) {
@@ -124,6 +133,45 @@ VOID __fastcall ContextSwitch(PUTHREAD CurrentThread, PUTHREAD NextThread) {
 		//
 		// Jump to the return address saved on NextThread's stack when the function was called.
 		//
+		ret
+	}
+}
+
+static 
+VOID __fastcall CleanupThread(PUTHREAD thread) {
+	free(thread->Stack);
+	free(thread);
+}
+
+//
+// Frees the resources associated with CurrentThread and switches to NextThread.
+// __fastcall sets the calling convention such that CurrentThread is in ECX and NextThread in EDX.
+// __declspec(naked) directs the compiler to omit any prologue or epilogue.
+//
+__declspec(naked)
+VOID __fastcall InternalExit(PUTHREAD CurrentThread, PUTHREAD NextThread) {
+	__asm {
+
+		//
+		// Set NextThread as the running thread.
+		//
+		mov     RunningThread, edx
+
+		//
+		// Load NextThread's stack pointer before calling CleanupThread(): making the call while
+		// using CurrentThread's stack would mean using the same memory being freed -- the stack.
+		//
+		mov		esp, dword ptr[edx].ThreadContext
+
+		call    CleanupThread
+
+		//
+		// Finish switching in NextThread.
+		//
+		pop		edi
+		pop		esi
+		pop		ebx
+		pop		ebp
 		ret
 	}
 }
