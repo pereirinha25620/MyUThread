@@ -115,6 +115,13 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClInclude Include="List.h" />
+    <ClInclude Include="UThread.h" />
+    <ClInclude Include="UThreadInternal.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="ThreadRipper.cpp" />
+    <ClCompile Include="UThread.cpp" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">
