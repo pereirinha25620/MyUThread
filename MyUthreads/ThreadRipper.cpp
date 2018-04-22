@@ -5,9 +5,6 @@
 
 VOID function_thread1(UT_ARGUMENT arg) {
 	printf("Running Thread 1 with Argument call: %d\n", (int)arg);
-
-	
-
 	UtYield();
 }
 

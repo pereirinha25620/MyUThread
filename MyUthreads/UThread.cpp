@@ -67,14 +67,9 @@ VOID UtActivate(HANDLE thread) {
 HANDLE UtCreate(UT_FUNCTION function, UT_ARGUMENT argument) {
 	PUTHREAD thread;
 	
-	/* Create a pointer to the new thread */
-	//thread = (PUTHREAD)malloc(sizeof(UTHREAD));
-	
-	/* Create a new stack frame for the thread */
-	//thread->Stack = (LPBYTE)malloc(STACK_SIZE);
-
-	//memset(thread->Stack, 0, STACK_SIZE);
-
+	/* Reserve at least a 64 KB region in memory with VirtualAlloc
+	 * due to minimum allocation granularity.
+	 */
 	thread = (PUTHREAD)VirtualAlloc(
 		NULL,
 		sizeof(UTHREAD) + 4*4096,
@@ -82,6 +77,10 @@ HANDLE UtCreate(UT_FUNCTION function, UT_ARGUMENT argument) {
 		PAGE_READWRITE
 	);
 
+	/* Commit an area of memory  capable  of  holding  the UTHREAD
+	 * structure. As it is less than an page, an area of 4 KB will
+	 * be commited to physical memory.
+	 */
 	VirtualAlloc(
 		thread,
 		sizeof(UTHREAD),
@@ -89,8 +88,14 @@ HANDLE UtCreate(UT_FUNCTION function, UT_ARGUMENT argument) {
 		PAGE_READWRITE
 	);
 
+	/*
+	 * The thread stack will have a two page (8 KB) offset to  the
+	 * UTHREAD structure. One uncommitted page is left between the
+	 * beginning of the stack and the UTHREAD.
+	 */
 	thread->Stack = (LPBYTE) VirtualAlloc(
-		(LPBYTE)thread + 2*4096,
+		(LPBYTE)thread 
+		+ 2*4096,
 		2*4096,
 		MEM_COMMIT,
 		PAGE_READWRITE
@@ -98,11 +103,6 @@ HANDLE UtCreate(UT_FUNCTION function, UT_ARGUMENT argument) {
 
 
 	/* Hold the thread context withn the thread's stack frame */
-	//thread->ThreadContext = (PTHREAD_CTX)(
-	//	thread->Stack + STACK_SIZE				// The pointer is at the end of the stack frame
-	//	- sizeof(ULONG)							// Ensure 4 bytes set to zero because of VS debugger
-	//	- sizeof(THREAD_CTX)					// Save space for the ThreadContext
-	//);
 	thread->ThreadContext = (PTHREAD_CTX)(
 		(LPBYTE)thread + 4 * 4096				// The pointer is at the end of the stack frame
 		- sizeof(ULONG)							// Ensure 4 bytes set to zero because of VS debugger
@@ -165,8 +165,7 @@ VOID __fastcall ContextSwitch(PUTHREAD CurrentThread, PUTHREAD NextThread) {
 
 static
 VOID __fastcall CleanupThread(PUTHREAD thread) {
-	free(thread->Stack);
-	free(thread);
+	VirtualFree((LPVOID)thread, 0, MEM_RELEASE);
 }
 
 //
