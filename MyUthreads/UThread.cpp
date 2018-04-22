@@ -1,9 +1,11 @@
 #include <Windows.h>
 #include "UThreadInternal.h"
 
-
 static
 VOID __fastcall ContextSwitch(PUTHREAD CurrentThread, PUTHREAD NextThread);
+
+static
+VOID __fastcall InternalExit(PUTHREAD Thread, PUTHREAD NextThread);
 
 PUTHREAD RunningThread;
 PUTHREAD MainThread;
@@ -25,6 +27,7 @@ static VOID Schedule() {
 
 static VOID InternalStart() {
 	RunningThread->Function(RunningThread->Arg);
+	UtExit();
 }
 
 VOID UtInit() {
@@ -52,6 +55,11 @@ VOID UtYield() {
 	}
 }
 
+VOID UtExit() {
+	RunningThreads -= 1;
+	InternalExit(RunningThread, ExtractNextReadyThread());
+}
+
 VOID UtActivate(HANDLE thread) {
 	InsertTailList(&ReadyQueue, &((PUTHREAD)thread)->Link);
 }
@@ -60,16 +68,43 @@ HANDLE UtCreate(UT_FUNCTION function, UT_ARGUMENT argument) {
 	PUTHREAD thread;
 	
 	/* Create a pointer to the new thread */
-	thread = (PUTHREAD)malloc(sizeof(UTHREAD));
+	//thread = (PUTHREAD)malloc(sizeof(UTHREAD));
 	
 	/* Create a new stack frame for the thread */
-	thread->Stack = (LPBYTE)malloc(STACK_SIZE);
+	//thread->Stack = (LPBYTE)malloc(STACK_SIZE);
 
-	memset(thread->Stack, 0, STACK_SIZE);
+	//memset(thread->Stack, 0, STACK_SIZE);
+
+	thread = (PUTHREAD)VirtualAlloc(
+		NULL,
+		sizeof(UTHREAD) + 4*4096,
+		MEM_RESERVE,
+		PAGE_READWRITE
+	);
+
+	VirtualAlloc(
+		thread,
+		sizeof(UTHREAD),
+		MEM_COMMIT,
+		PAGE_READWRITE
+	);
+
+	thread->Stack = (LPBYTE) VirtualAlloc(
+		(LPBYTE)thread + 2*4096,
+		2*4096,
+		MEM_COMMIT,
+		PAGE_READWRITE
+	);
+
 
 	/* Hold the thread context withn the thread's stack frame */
+	//thread->ThreadContext = (PTHREAD_CTX)(
+	//	thread->Stack + STACK_SIZE				// The pointer is at the end of the stack frame
+	//	- sizeof(ULONG)							// Ensure 4 bytes set to zero because of VS debugger
+	//	- sizeof(THREAD_CTX)					// Save space for the ThreadContext
+	//);
 	thread->ThreadContext = (PTHREAD_CTX)(
-		thread->Stack + STACK_SIZE				// The pointer is at the end of the stack frame
+		(LPBYTE)thread + 4 * 4096				// The pointer is at the end of the stack frame
 		- sizeof(ULONG)							// Ensure 4 bytes set to zero because of VS debugger
 		- sizeof(THREAD_CTX)					// Save space for the ThreadContext
 	);
@@ -124,6 +159,45 @@ VOID __fastcall ContextSwitch(PUTHREAD CurrentThread, PUTHREAD NextThread) {
 		//
 		// Jump to the return address saved on NextThread's stack when the function was called.
 		//
+		ret
+	}
+}
+
+static
+VOID __fastcall CleanupThread(PUTHREAD thread) {
+	free(thread->Stack);
+	free(thread);
+}
+
+//
+// Frees the resources associated with CurrentThread and switches to NextThread.
+// __fastcall sets the calling convention such that CurrentThread is in ECX and NextThread in EDX.
+// __declspec(naked) directs the compiler to omit any prologue or epilogue.
+//
+__declspec(naked)
+VOID __fastcall InternalExit(PUTHREAD CurrentThread, PUTHREAD NextThread) {
+	__asm {
+
+		//
+		// Set NextThread as the running thread.
+		//
+		mov     RunningThread, edx
+
+		//
+		// Load NextThread's stack pointer before calling CleanupThread(): making the call while
+		// using CurrentThread's stack would mean using the same memory being freed -- the stack.
+		//
+		mov		esp, dword ptr[edx].ThreadContext
+
+		call    CleanupThread
+
+		//
+		// Finish switching in NextThread.
+		//
+		pop		edi
+		pop		esi
+		pop		ebx
+		pop		ebp
 		ret
 	}
 }

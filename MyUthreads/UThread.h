@@ -33,6 +33,11 @@ VOID UtRun();
 VOID UtYield();
 
 /*
+ * Terminates the execution of the current thread.
+ */
+VOID UtExit();
+
+/*
  * Activate a thread: Add the thread to the ReadyQueue tail, signaling that is ready 
  * to be executed.
  */

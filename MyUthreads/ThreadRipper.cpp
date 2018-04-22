@@ -5,6 +5,9 @@
 
 VOID function_thread1(UT_ARGUMENT arg) {
 	printf("Running Thread 1 with Argument call: %d\n", (int)arg);
+
+	
+
 	UtYield();
 }
 
@@ -22,4 +25,6 @@ int main() {
 
 	printf("No more threads to process. Press any key to finish.\n");
 	getchar();
+
+
 }
